@@ -168,19 +168,19 @@ class ChinaStockAdapter:
 
         return df['close']
 
-    def fetch_returns_batch(self, symbols: list[str], days: int = 400) -> dict[str, pd.Series]:
+    def fetch_returns_batch(self, symbols: list[str], start_date: str, end_date: str) -> dict[str, pd.Series]:
         """
-        批量获取收益率序列（单次API调用）
+        批量获取收益率序列（按日期范围）
 
         按市场分类后批量请求，显著减少网络往返次数。
-        注意：days参数为自然日，实际交易日约为days*0.7
 
         Args:
             symbols: 股票/指数代码列表（不带后缀）
                 - A股: ['600519', '000001', ...]
                 - 港股: ['9988', ...]
                 - 指数: ['000300']
-            days: 回溯天数（自然日），默认400天约280个交易日
+            start_date: 起始日期 'YYYYMMDD' (如 '20240101')
+            end_date: 结束日期 'YYYYMMDD' (如 '20241231')
 
         Returns:
             dict[str, pd.Series]: {代码: 收益率序列}
@@ -188,14 +188,13 @@ class ChinaStockAdapter:
 
         Example:
             >>> adapter = ChinaStockAdapter()
-            >>> results = adapter.fetch_returns_batch(['600519', '000001', '9988'])
-            >>> len(results['600519'])  # 约280个交易日
+            >>> results = adapter.fetch_returns_batch(
+            ...     ['600519', '000001', '9988'],
+            ...     start_date='20240101',
+            ...     end_date='20241231'
+            ... )
+            >>> len(results['600519'])  # 实际交易日数量
         """
-        from datetime import datetime, timedelta
-
-        # 计算日期范围
-        end_date = datetime.now().strftime('%Y%m%d')
-        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
 
         # 按市场分类
         a_stocks = []
