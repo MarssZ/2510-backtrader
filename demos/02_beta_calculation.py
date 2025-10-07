@@ -17,24 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import numpy as np
 import pandas as pd
 from src.data_source import ChinaStockAdapter
-
-
-def calculate_beta(asset_returns: np.ndarray, market_returns: np.ndarray) -> float:
-    """
-    计算资产的Beta系数
-
-    公式: β = Cov(r_asset, r_market) / Var(r_market)
-
-    Args:
-        asset_returns: 资产日收益率数组
-        market_returns: 市场基准日收益率数组
-
-    Returns:
-        float: Beta系数
-    """
-    covariance = np.cov(asset_returns, market_returns)[0, 1]
-    market_variance = np.var(market_returns, ddof=1)
-    return covariance / market_variance
+from src.beta import calculate_beta
 
 
 def fetch_returns(adapter: ChinaStockAdapter, ts_code: str, limit: int = 300) -> pd.Series:

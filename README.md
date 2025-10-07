@@ -5,6 +5,17 @@
 ## 项目结构
 
 ```
+  项目架构现状
+  src/
+  ├── data_source.py     # 数据获取（A股/指数/港股统一接口）
+  ├── beta.py            # Beta系数计算
+  └── tracking_error.py  # 跟踪误差计算
+
+  demos/
+  ├── 01_sma_crossover.py        # 双均线交叉策略（A股真实数据）
+  ├── 02_beta_calculation.py      # 只关注业务流程，不实现算法
+  └── 03_tracking_error.py        # 只关注业务流程，不实现算法
+
 ├── demos/                          # 所有示例代码
 │   ├── 01_sma_crossover.py        # 双均线交叉策略（A股真实数据）
 │   └── ...                        # 更多 demo 持续添加
