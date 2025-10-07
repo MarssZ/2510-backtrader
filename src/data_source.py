@@ -82,3 +82,88 @@ class ChinaStockAdapter:
         result.set_index('datetime', inplace=True)
 
         return result
+
+    def fetch_returns(self, symbol: str, limit: int = 300) -> pd.Series:
+        """
+        获取日收益率序列（统一处理A股/指数/港股）
+
+        这是一个统一的数据接口，调用方无需关心symbol的市场类型。
+        内部会自动识别并路由到对应的tushare API。
+
+        Args:
+            symbol: 简化代码（不带后缀）
+                - '600848': A股
+                - '000300': 沪深300指数
+                - '9988': 港股阿里巴巴
+            limit: 获取数据条数（250交易日约1年）
+
+        Returns:
+            pd.Series: 日收益率序列
+                - 索引为交易日期（datetime）
+                - 值为当日收益率（pct_change计算）
+                - 已去除NaN值
+
+        Examples:
+            >>> adapter = ChinaStockAdapter()
+            >>> returns = adapter.fetch_returns('600848', limit=250)
+            >>> len(returns)
+            249  # pct_change会损失第一个值
+        """
+        close_prices = self._fetch_close_prices(symbol, limit)
+        return close_prices.pct_change().dropna()
+
+    def _fetch_close_prices(self, symbol: str, limit: int) -> pd.Series:
+        """
+        内部方法：根据symbol类型路由到不同的API
+
+        Args:
+            symbol: 简化代码（不带后缀）
+            limit: 数据条数
+
+        Returns:
+            pd.Series: 收盘价序列（datetime索引）
+        """
+        # 判断市场类型并路由
+        if symbol == '000300':
+            return self._fetch_index_close(symbol, limit)
+        elif symbol.isdigit() and len(symbol) in (4, 5):
+            return self._fetch_hk_close(symbol, limit)
+        else:
+            return self._fetch_stock_close(symbol, limit)
+
+    def _fetch_stock_close(self, symbol: str, limit: int) -> pd.Series:
+        """获取A股收盘价（复用现有fetch_data逻辑）"""
+        df = self.fetch_data(symbol, limit)
+        return df['close']
+
+    def _fetch_index_close(self, symbol: str, limit: int) -> pd.Series:
+        """获取指数收盘价（使用index_daily接口）"""
+        ts_code = f'{symbol}.SH'
+        raw_df = self.pro.index_daily(ts_code=ts_code, limit=limit)
+
+        if raw_df is None or len(raw_df) == 0:
+            raise ValueError(f"未获取到指数 {ts_code} 的数据")
+
+        # 标准化为datetime索引 + close值
+        df = pd.DataFrame({
+            'datetime': pd.to_datetime(raw_df['trade_date']),
+            'close': raw_df['close']
+        }).sort_values('datetime').set_index('datetime')
+
+        return df['close']
+
+    def _fetch_hk_close(self, symbol: str, limit: int) -> pd.Series:
+        """获取港股收盘价（使用hk_daily接口）"""
+        ts_code = f'{symbol.zfill(5)}.HK'
+        raw_df = self.pro.hk_daily(ts_code=ts_code, limit=limit)
+
+        if raw_df is None or len(raw_df) == 0:
+            raise ValueError(f"未获取到港股 {ts_code} 的数据")
+
+        # 标准化为datetime索引 + close值
+        df = pd.DataFrame({
+            'datetime': pd.to_datetime(raw_df['trade_date']),
+            'close': raw_df['close']
+        }).sort_values('datetime').set_index('datetime')
+
+        return df['close']
