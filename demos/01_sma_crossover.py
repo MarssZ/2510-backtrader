@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+# 将项目根目录添加到模块搜索路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import backtrader as bt
 from src.data_source import ChinaStockAdapter
 

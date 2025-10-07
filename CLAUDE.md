@@ -160,6 +160,11 @@
 - **工作目录**：E:\MarssPython\2510-backtrader
 - **项目结构**：`specs/{功能名称}/` 目录存放规范文档
 
+## 本项目信息
+- 本项目是一个基于 backtrader 框架的 量化投资项目
+- 数据获取：使用 tushare 库获取 A 股数据
+  - 接口文档：[tushare.pro](http://tushare.org/boxoffice.html)
+
 ## 开发约定
 - 使用中文注释和文档
 - 代码文件统一使用UTF-8编码
