@@ -43,7 +43,7 @@ def fetch_returns(adapter: ChinaStockAdapter, ts_code: str, limit: int = 300) ->
 
     Args:
         adapter: 数据适配器实例
-        ts_code: 股票代码（如'600848'）或指数代码（'000300'表示沪深300）
+        ts_code: 股票代码（如'600848'）或指数代码（'000300'表示沪深300）或港股（'9988'表示阿里巴巴）
         limit: 获取数据条数（250交易日约1年，多取点防止停牌）
 
     Returns:
@@ -56,6 +56,18 @@ def fetch_returns(adapter: ChinaStockAdapter, ts_code: str, limit: int = 300) ->
         if raw_df is None or len(raw_df) == 0:
             raise ValueError(f"未获取到指数 {ts_code_full} 的数据")
         # 标准化指数数据
+        df = pd.DataFrame({
+            'datetime': pd.to_datetime(raw_df['trade_date']),
+            'close': raw_df['close']
+        }).sort_values('datetime').set_index('datetime')
+    # 处理港股（以4-5位数字判断，如9988或09988）
+    elif ts_code.isdigit() and len(ts_code) in (4, 5):
+        # 确保5位格式（补齐前导0）
+        ts_code_full = f'{ts_code.zfill(5)}.HK'
+        raw_df = adapter.pro.hk_daily(ts_code=ts_code_full, limit=limit)
+        if raw_df is None or len(raw_df) == 0:
+            raise ValueError(f"未获取到港股 {ts_code_full} 的数据")
+        # 标准化港股数据
         df = pd.DataFrame({
             'datetime': pd.to_datetime(raw_df['trade_date']),
             'close': raw_df['close']
@@ -246,6 +258,7 @@ def main():
         ('688041', '海光信息'),
         ('000002', '万科A'),
         ('601127', '赛力斯'),
+        ('9988', '阿里巴巴'),
     ]
 
     adapter = ChinaStockAdapter()
