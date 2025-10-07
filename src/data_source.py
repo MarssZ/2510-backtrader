@@ -167,3 +167,138 @@ class ChinaStockAdapter:
         }).sort_values('datetime').set_index('datetime')
 
         return df['close']
+
+    def fetch_returns_batch(self, symbols: list[str], days: int = 400) -> dict[str, pd.Series]:
+        """
+        批量获取收益率序列（单次API调用）
+
+        按市场分类后批量请求，显著减少网络往返次数。
+        注意：days参数为自然日，实际交易日约为days*0.7
+
+        Args:
+            symbols: 股票/指数代码列表（不带后缀）
+                - A股: ['600519', '000001', ...]
+                - 港股: ['9988', ...]
+                - 指数: ['000300']
+            days: 回溯天数（自然日），默认400天约280个交易日
+
+        Returns:
+            dict[str, pd.Series]: {代码: 收益率序列}
+                - 失败的股票不返回（调用方需检查key是否存在）
+
+        Example:
+            >>> adapter = ChinaStockAdapter()
+            >>> results = adapter.fetch_returns_batch(['600519', '000001', '9988'])
+            >>> len(results['600519'])  # 约280个交易日
+        """
+        from datetime import datetime, timedelta
+
+        # 计算日期范围
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y%m%d')
+
+        # 按市场分类
+        a_stocks = []
+        hk_stocks = []
+        indexes = []
+
+        for symbol in symbols:
+            if symbol == '000300':
+                indexes.append(symbol)
+            elif symbol.isdigit() and len(symbol) in (4, 5):
+                hk_stocks.append(symbol)
+            else:
+                a_stocks.append(symbol)
+
+        results = {}
+
+        # 批量获取A股
+        if a_stocks:
+            ts_codes = [self._normalize_ts_code(s) for s in a_stocks]
+            try:
+                raw_df = self.pro.daily(
+                    ts_code=','.join(ts_codes),
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if raw_df is not None and len(raw_df) > 0:
+                    results.update(self._parse_batch_returns(raw_df, a_stocks))
+            except Exception:
+                pass  # 批量失败时静默跳过
+
+        # 批量获取港股
+        if hk_stocks:
+            ts_codes = [f'{s.zfill(5)}.HK' for s in hk_stocks]
+            try:
+                raw_df = self.pro.hk_daily(
+                    ts_code=','.join(ts_codes),
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if raw_df is not None and len(raw_df) > 0:
+                    results.update(self._parse_batch_returns(raw_df, hk_stocks))
+            except Exception:
+                pass
+
+        # 单独获取指数（通常只有沪深300）
+        for idx in indexes:
+            try:
+                ts_code = f'{idx}.SH'
+                raw_df = self.pro.index_daily(
+                    ts_code=ts_code,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                if raw_df is not None and len(raw_df) > 0:
+                    close_series = pd.Series(
+                        raw_df['close'].values,
+                        index=pd.to_datetime(raw_df['trade_date'])
+                    ).sort_index()
+                    results[idx] = close_series.pct_change().dropna()
+            except Exception:
+                pass
+
+        return results
+
+    def _normalize_ts_code(self, symbol: str) -> str:
+        """将简化代码转换为tushare标准格式（600519 -> 600519.SH）"""
+        if '.' in symbol:
+            return symbol
+        if symbol.startswith('6'):
+            return f'{symbol}.SH'
+        elif symbol.startswith(('0', '3')):
+            return f'{symbol}.SZ'
+        elif symbol.startswith('688'):
+            return f'{symbol}.SH'
+        else:
+            return f'{symbol}.SH'
+
+    def _parse_batch_returns(self, raw_df: pd.DataFrame, symbols: list[str]) -> dict[str, pd.Series]:
+        """
+        从批量返回的DataFrame中解析出每只股票的收益率
+
+        Args:
+            raw_df: tushare返回的原始数据（包含多只股票）
+            symbols: 原始代码列表（不带后缀）
+
+        Returns:
+            {代码: 收益率序列}
+        """
+        results = {}
+        ts_codes = [self._normalize_ts_code(s) for s in symbols]
+
+        for symbol, ts_code in zip(symbols, ts_codes):
+            stock_df = raw_df[raw_df['ts_code'] == ts_code]
+            if len(stock_df) == 0:
+                continue
+
+            close_series = pd.Series(
+                stock_df['close'].values,
+                index=pd.to_datetime(stock_df['trade_date'])
+            ).sort_index()
+
+            returns = close_series.pct_change().dropna()
+            if len(returns) > 0:
+                results[symbol] = returns
+
+        return results

@@ -20,50 +20,6 @@ from src.data_source import ChinaStockAdapter
 from src.beta import calculate_beta
 
 
-def fetch_returns(adapter: ChinaStockAdapter, ts_code: str, limit: int = 300) -> pd.Series:
-    """
-    获取日收益率序列
-
-    Args:
-        adapter: 数据适配器实例
-        ts_code: 股票代码（如'600848'）或指数代码（'000300'表示沪深300）或港股（'9988'表示阿里巴巴）
-        limit: 获取数据条数（250交易日约1年，多取点防止停牌）
-
-    Returns:
-        Series: 索引为日期，值为日收益率
-    """
-    # 处理指数代码（沪深300使用专门的指数接口）
-    if ts_code == '000300':
-        ts_code_full = '000300.SH'
-        raw_df = adapter.pro.index_daily(ts_code=ts_code_full, limit=limit)
-        if raw_df is None or len(raw_df) == 0:
-            raise ValueError(f"未获取到指数 {ts_code_full} 的数据")
-        # 标准化指数数据
-        df = pd.DataFrame({
-            'datetime': pd.to_datetime(raw_df['trade_date']),
-            'close': raw_df['close']
-        }).sort_values('datetime').set_index('datetime')
-    # 处理港股（以4-5位数字判断，如9988或09988）
-    elif ts_code.isdigit() and len(ts_code) in (4, 5):
-        # 确保5位格式（补齐前导0）
-        ts_code_full = f'{ts_code.zfill(5)}.HK'
-        raw_df = adapter.pro.hk_daily(ts_code=ts_code_full, limit=limit)
-        if raw_df is None or len(raw_df) == 0:
-            raise ValueError(f"未获取到港股 {ts_code_full} 的数据")
-        # 标准化港股数据
-        df = pd.DataFrame({
-            'datetime': pd.to_datetime(raw_df['trade_date']),
-            'close': raw_df['close']
-        }).sort_values('datetime').set_index('datetime')
-    else:
-        df = adapter.fetch_data(symbol=ts_code, limit=limit)
-
-    # 计算日收益率: (今日收盘 - 昨日收盘) / 昨日收盘
-    returns = df['close'].pct_change()
-
-    return returns.dropna()
-
-
 def align_returns(asset_ret: pd.Series, market_ret: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """
     对齐两个收益率序列的交易日
@@ -89,7 +45,7 @@ def align_returns(asset_ret: pd.Series, market_ret: pd.Series) -> tuple[np.ndarr
     return asset_aligned[mask], market_aligned[mask]
 
 
-def calculate_stock_beta(adapter: ChinaStockAdapter,
+def calculate_stock_beta(returns_data: dict[str, pd.Series],
                          stock_code: str,
                          stock_name: str,
                          benchmark_code: str = '000300',
@@ -98,7 +54,7 @@ def calculate_stock_beta(adapter: ChinaStockAdapter,
     计算单支股票的Beta及相关指标
 
     Args:
-        adapter: 数据适配器
+        returns_data: 批量获取的收益率数据 {代码: Series}
         stock_code: 股票代码
         stock_name: 股票名称
         benchmark_code: 基准指数代码
@@ -108,9 +64,16 @@ def calculate_stock_beta(adapter: ChinaStockAdapter,
         dict: 包含beta、波动率、相关系数等指标，失败时返回error字段
     """
     try:
-        # 获取收益率（多取50条防止停牌）
-        asset_returns = fetch_returns(adapter, stock_code, limit=period + 50)
-        market_returns = fetch_returns(adapter, benchmark_code, limit=period + 50)
+        # 从批量数据中获取
+        if stock_code not in returns_data or benchmark_code not in returns_data:
+            return {
+                'code': stock_code,
+                'name': stock_name,
+                'error': '数据获取失败'
+            }
+
+        asset_returns = returns_data[stock_code]
+        market_returns = returns_data[benchmark_code]
 
         # 对齐交易日
         asset_arr, market_arr = align_returns(asset_returns, market_returns)
@@ -253,12 +216,19 @@ def main():
     print(f'计算窗口: {period}个交易日')
     print(f'股票数量: {len(STOCK_LIST)}支')
     print('=' * 80)
+
+    # 批量获取所有股票+基准的收益率（1次API调用）
+    all_symbols = [code for code, _ in STOCK_LIST] + [benchmark]
+    print(f'批量获取 {len(all_symbols)} 只股票数据...', end=' ')
+    returns_data = adapter.fetch_returns_batch(all_symbols, days=400)
+    print(f'✓ 成功获取 {len(returns_data)} 只\n')
+
     print('开始计算...\n')
 
     results = []
     for i, (code, name) in enumerate(STOCK_LIST, 1):
         print(f'[{i}/{len(STOCK_LIST)}] 计算 {code} {name}...', end=' ')
-        result = calculate_stock_beta(adapter, code, name, benchmark, period)
+        result = calculate_stock_beta(returns_data, code, name, benchmark, period)
         results.append(result)
 
         if 'error' in result:

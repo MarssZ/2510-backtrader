@@ -27,5 +27,7 @@
 
 ## 项目信息
 - **环境**：Win11 + Python 3.12.9 + uv
-- **目标**：基于 backtrader 的量化投资（tushare获取A股数据）
+- **目标**：基于 backtrader 的量化投资
+- **数据源**：Tushare Pro（有token，Org版已停止维护）
+  - Pro版官方文档：https://tushare.pro/document/2?doc_id=27
 - **约定**：中文注释、UTF-8编码、模块化、简洁优先

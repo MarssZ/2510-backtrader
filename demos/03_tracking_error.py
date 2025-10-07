@@ -46,7 +46,7 @@ def align_returns(asset_ret: pd.Series, market_ret: pd.Series) -> tuple[np.ndarr
     return asset_aligned[mask], market_aligned[mask]
 
 
-def calculate_stock_metrics(adapter: ChinaStockAdapter,
+def calculate_stock_metrics(returns_data: dict[str, pd.Series],
                              stock_code: str,
                              stock_name: str,
                              benchmark_code: str = '000300',
@@ -55,7 +55,7 @@ def calculate_stock_metrics(adapter: ChinaStockAdapter,
     计算单支股票的Beta、跟踪误差及相关指标
 
     Args:
-        adapter: 数据适配器
+        returns_data: 批量获取的收益率数据 {代码: Series}
         stock_code: 股票代码
         stock_name: 股票名称
         benchmark_code: 基准指数代码
@@ -65,9 +65,16 @@ def calculate_stock_metrics(adapter: ChinaStockAdapter,
         dict: 包含beta、跟踪误差、波动率、相关系数等指标，失败时返回error字段
     """
     try:
-        # 获取收益率（多取50条防止停牌）
-        asset_returns = adapter.fetch_returns(stock_code, limit=period + 50)
-        market_returns = adapter.fetch_returns(benchmark_code, limit=period + 50)
+        # 从批量数据中获取
+        if stock_code not in returns_data or benchmark_code not in returns_data:
+            return {
+                'code': stock_code,
+                'name': stock_name,
+                'error': '数据获取失败'
+            }
+
+        asset_returns = returns_data[stock_code]
+        market_returns = returns_data[benchmark_code]
 
         # 对齐交易日
         asset_arr, market_arr = align_returns(asset_returns, market_returns)
@@ -221,12 +228,19 @@ def main():
     print(f'计算窗口: {period}个交易日')
     print(f'股票数量: {len(STOCK_LIST)}支')
     print('=' * 100)
+
+    # 批量获取所有股票+基准的收益率（1次API调用）
+    all_symbols = [code for code, _ in STOCK_LIST] + [benchmark]
+    print(f'批量获取 {len(all_symbols)} 只股票数据...', end=' ')
+    returns_data = adapter.fetch_returns_batch(all_symbols, days=400)
+    print(f'✓ 成功获取 {len(returns_data)} 只\n')
+
     print('开始计算...\n')
 
     results = []
     for i, (code, name) in enumerate(STOCK_LIST, 1):
         print(f'[{i}/{len(STOCK_LIST)}] 计算 {code} {name}...', end=' ')
-        result = calculate_stock_metrics(adapter, code, name, benchmark, period)
+        result = calculate_stock_metrics(returns_data, code, name, benchmark, period)
         results.append(result)
 
         if 'error' in result:
