@@ -102,26 +102,29 @@ def format_table(results: list[dict], start_date: str, end_date: str, actual_day
     lines.append('=' * 80)
 
     # 表头
-    lines.append(f"{'排名':>4} {'代码':>10} {'名称':>10} {'Beta':>8} {'年化波动率':>12} {'相关系数':>10} {'数据点':>8}")
-    lines.append('-' * 90)
+    lines.append(
+        f"{'排名':>4} {'代码':>8} {'名称':<8} {'Beta':>6} "
+        f"{'年化波动率':>12} {'相关系数':>8} {'数据点':>6}"
+    )
+    lines.append('-' * 80)
 
     # 成功的结果
     for i, r in enumerate(success, 1):
         lines.append(
             f"{i:>4} "
-            f"{r['code']:>10} "
-            f"{r['name']:>10} "
-            f"{r['beta']:>8.4f} "
-            f"{r['volatility']:>12.2f}% "
-            f"{r['correlation']:>10.4f} "
-            f"{r['data_points']:>8}"
+            f"{r['code']:>8} "
+            f"{r['name']:<8} "
+            f"{r['beta']:>6.2f} "
+            f"{r['volatility']:>11.2f}% "
+            f"{r['correlation']:>8.4f} "
+            f"{r['data_points']:>6}"
         )
 
     # 失败的结果
     if failed:
         lines.append('')
         lines.append('计算失败:')
-        lines.append('-' * 90)
+        lines.append('-' * 80)
         for r in failed:
             lines.append(f"  {r['code']:<10} {r['name']:<10} {r['error']}")
 
@@ -133,7 +136,7 @@ def format_table(results: list[dict], start_date: str, end_date: str, actual_day
         max_beta = max(r['beta'] for r in success)
         min_beta = min(r['beta'] for r in success)
         lines.append(f"成功: {len(success)}支  失败: {len(failed)}支")
-        lines.append(f"Beta范围: [{min_beta:.4f}, {max_beta:.4f}]  平均: {avg_beta:.4f}")
+        lines.append(f"Beta范围: [{min_beta:.2f}, {max_beta:.2f}]  平均: {avg_beta:.2f}")
 
     lines.append('=' * 80)
 

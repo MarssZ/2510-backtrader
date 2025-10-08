@@ -62,17 +62,27 @@ def calculate_stock_metrics(returns_data: dict[str, pd.Series],
 
     # 计算指标（直接用对齐后的全部数据）
     beta = calculate_beta(asset_arr, market_arr)
-    volatility = np.std(asset_arr, ddof=1) * np.sqrt(252) * 100  # 年化波动率%
+    volatility = np.std(asset_arr, ddof=1) * np.sqrt(252) * 100  # 资产年化波动率%
+    market_volatility = np.std(market_arr, ddof=1) * np.sqrt(252) * 100  # 基准年化波动率%
     correlation = np.corrcoef(asset_arr, market_arr)[0, 1]
     tracking_error = calculate_tracking_error(asset_arr, market_arr, annualized=True)
+
+    # 风险分解：总风险² = 系统性风险² + 残差风险²
+    systematic_risk = abs(beta) * market_volatility  # 系统性风险
+    residual_risk = np.sqrt(max(0, volatility**2 - systematic_risk**2))  # 残差风险
+    residual_ratio = (residual_risk / volatility) * 100  # 残差占比（0-100%）
 
     return {
         'code': stock_code,
         'name': stock_name,
         'beta': beta,
         'volatility': volatility,
-        'correlation': correlation,
+        'market_volatility': market_volatility,
+        'systematic_risk': systematic_risk,
+        'residual_risk': residual_risk,
+        'residual_ratio': residual_ratio,
         'tracking_error': tracking_error,
+        'correlation': correlation,
         'data_points': len(asset_arr)
     }
 
@@ -106,29 +116,35 @@ def format_table(results: list[dict], start_date: str, end_date: str, actual_day
 
     # 表头
     lines.append(
-        f"{'排名':>4} {'代码':>10} {'名称':<8} {'Beta':>8} "
-        f"{'波动率':>8} {'跟踪误差':>10} {'相关系数':>8} {'数据点':>4}"
+        f"{'排名':>4} {'代码':>8} {'名称':<8} {'Beta':>6} "
+        f"{'资产波动':>10} {'基准波动':>10} {'系统风险':>10} "
+        f"{'残差风险':>10} {'残差占比':>8} {'跟踪误差':>10} "
+        f"{'相关系数':>8} {'数据点':>6}"
     )
-    lines.append('-' * 100)
+    lines.append('-' * 110)
 
     # 成功的结果
     for i, r in enumerate(success, 1):
         lines.append(
             f"{i:>4} "
-            f"{r['code']:>10} "
-            f"{r['name']:<10} "
-            f"{r['beta']:>8.4f} "
-            f"{r['volatility']:>8.2f}% "
-            f"{r['tracking_error']:>10.2f}% "
+            f"{r['code']:>8} "
+            f"{r['name']:<8} "
+            f"{r['beta']:>6.2f} "
+            f"{r['volatility']:>9.2f}% "
+            f"{r['market_volatility']:>9.2f}% "
+            f"{r['systematic_risk']:>9.2f}% "
+            f"{r['residual_risk']:>9.2f}% "
+            f"{r['residual_ratio']:>7.1f}% "
+            f"{r['tracking_error']:>9.2f}% "
             f"{r['correlation']:>8.4f} "
-            f"{r['data_points']:>4}"
+            f"{r['data_points']:>6}"
         )
 
     # 失败的结果
     if failed:
         lines.append('')
         lines.append('计算失败:')
-        lines.append('-' * 100)
+        lines.append('-' * 110)
         for r in failed:
             lines.append(f"  {r['code']:<10} {r['name']:<10} {r['error']}")
 
@@ -139,12 +155,20 @@ def format_table(results: list[dict], start_date: str, end_date: str, actual_day
         avg_beta = sum(r['beta'] for r in success) / len(success)
         max_beta = max(r['beta'] for r in success)
         min_beta = min(r['beta'] for r in success)
+        avg_vol = sum(r['volatility'] for r in success) / len(success)
+        avg_market_vol = sum(r['market_volatility'] for r in success) / len(success)
+        avg_sys = sum(r['systematic_risk'] for r in success) / len(success)
+        avg_res = sum(r['residual_risk'] for r in success) / len(success)
+        avg_res_ratio = sum(r['residual_ratio'] for r in success) / len(success)
         avg_te = sum(r['tracking_error'] for r in success) / len(success)
         max_te = max(r['tracking_error'] for r in success)
         min_te = min(r['tracking_error'] for r in success)
 
         lines.append(f"成功: {len(success)}支  失败: {len(failed)}支")
-        lines.append(f"Beta范围: [{min_beta:.4f}, {max_beta:.4f}]  平均: {avg_beta:.4f}")
+        lines.append(f"Beta范围: [{min_beta:.2f}, {max_beta:.2f}]  平均: {avg_beta:.2f}")
+        lines.append(f"平均资产波动: {avg_vol:.2f}%  平均基准波动: {avg_market_vol:.2f}%")
+        lines.append(f"平均系统风险: {avg_sys:.2f}%  平均残差风险: {avg_res:.2f}%")
+        lines.append(f"平均残差占比: {avg_res_ratio:.1f}%")
         lines.append(f"跟踪误差范围: [{min_te:.2f}%, {max_te:.2f}%]  平均: {avg_te:.2f}%")
 
     lines.append('=' * 100)
